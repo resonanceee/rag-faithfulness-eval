@@ -1,0 +1,21 @@
+name: smoke
+
+# Real-model end-to-end checks. Heavy (downloads NLI checkpoints, CPU inference),
+# so not run per-PR. Nightly + manual dispatch.
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e '.[dev,models]'
+      - run: pytest -m smoke

@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rag-faithfulness-eval"
+version = "0.1.0"
+description = "Measuring RAG faithfulness across EN/DE/IT with NLI judges"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+models = [
+    "torch>=2.2",
+    "transformers>=4.40",
+    "datasets>=2.18",
+    "sentencepiece>=0.2",
+]
+dev = [
+    "pytest>=8",
+    "ruff>=0.5",
+]
+
+[tool.setuptools.packages.find]
+include = ["rag_faithfulness_eval*"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+markers = [
+    "smoke: end-to-end checks needing real model downloads (deselect with '-m \"not smoke\"')",
+]

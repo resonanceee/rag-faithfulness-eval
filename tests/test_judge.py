@@ -15,7 +15,7 @@ class FakeJudge:
     def __init__(self):
         self.calls = 0
 
-    def score_batch(self, pairs):
+    def score_batch(self, pairs, batch_size=32):
         self.calls += len(pairs)
         return [{"entailment": 0.9, "neutral": 0.05, "contradiction": 0.05} for _ in pairs]
 

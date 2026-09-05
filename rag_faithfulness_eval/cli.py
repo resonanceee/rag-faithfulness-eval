@@ -32,6 +32,16 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--cache", type=Path, default=Path("results/judge_cache.jsonl"))
     s.add_argument("--device", default=None)
 
+    e = sub.add_parser("exp1", help="Experiment 1: judge calibration on RAGTruth")
+    e.add_argument("--split", default="test")
+    e.add_argument("--limit", type=int, default=None)
+    e.add_argument("--arms", default="ABCD")
+    e.add_argument("--repeat", type=int, default=1, help="LLM judge repeat runs (repeatability)")
+    e.add_argument("--llm-model", default="z-ai/glm-5.3-flash")
+    e.add_argument("--threshold", type=float, default=0.85)
+    e.add_argument("--align-threshold", type=float, default=0.2)
+    e.add_argument("--out", type=Path, default=Path("results/exp1"))
+
     args = p.parse_args(argv)
 
     if args.cmd == "build-data":
@@ -71,6 +81,21 @@ def main(argv: list[str] | None = None) -> int:
                 )
         agree = sum(is_faithful(pr) == r["faithful"] for r, pr in zip(rows, probs, strict=True))
         print(f"scored {len(rows)} samples, verdict agreement {agree}/{len(rows)}")
+        return 0
+
+    if args.cmd == "exp1":
+        from .exp1 import run_exp1
+
+        run_exp1(
+            split=args.split,
+            limit=args.limit,
+            arms=args.arms,
+            repeat=args.repeat,
+            llm_model=args.llm_model,
+            threshold=args.threshold,
+            out_dir=args.out,
+            align_threshold=args.align_threshold,
+        )
         return 0
 
     return 2

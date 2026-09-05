@@ -23,7 +23,7 @@ class Judge(Protocol):
 
     def score(self, premise: str, hypothesis: str) -> Probs: ...
 
-    def score_batch(self, pairs: list[tuple[str, str]]) -> list[Probs]: ...
+    def score_batch(self, pairs: list[tuple[str, str]], batch_size: int = 32) -> list[Probs]: ...
 
 
 def is_faithful(probs: Probs) -> bool:
@@ -93,11 +93,11 @@ class CachedJudge:
     def checkpoint(self) -> str:
         return self.judge.checkpoint
 
-    def score_batch(self, pairs: list[tuple[str, str]]) -> list[Probs]:
+    def score_batch(self, pairs: list[tuple[str, str]], batch_size: int = 32) -> list[Probs]:
         keys = [_cache_key(self.checkpoint, p, h) for p, h in pairs]
         missing = [i for i, k in enumerate(keys) if k not in self._cache]
         if missing:
-            fresh = self.judge.score_batch([pairs[i] for i in missing])
+            fresh = self.judge.score_batch([pairs[i] for i in missing], batch_size)
             self.cache_path.parent.mkdir(parents=True, exist_ok=True)
             with self.cache_path.open("a") as f:
                 for i, probs in zip(missing, fresh, strict=True):

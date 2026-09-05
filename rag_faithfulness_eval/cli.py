@@ -42,6 +42,23 @@ def main(argv: list[str] | None = None) -> int:
     e.add_argument("--align-threshold", type=float, default=0.2)
     e.add_argument("--out", type=Path, default=Path("results/exp1"))
 
+    x = sub.add_parser("exp2", help="Experiment 2: cross-lingual transfer DE/IT")
+    x.add_argument("--arms", default="ABCD")
+    x.add_argument("--n-mix", type=int, default=200)
+    x.add_argument("--threshold", type=float, default=0.85)
+    x.add_argument("--llm-model", default="z-ai/glm-5.3-flash")
+    x.add_argument("--out", type=Path, default=Path("results/exp2"))
+
+    s3 = sub.add_parser("exp3-sample", help="sample disagreement cases for annotation")
+    s3.add_argument("--n-exp1", type=int, default=60)
+    s3.add_argument("--n-exp2", type=int, default=30)
+    s3.add_argument("--out", type=Path, default=Path("data/annotation"))
+
+    k3 = sub.add_parser("exp3-kappa", help="Cohen's kappa between two reviewer files")
+    k3.add_argument("file_a", type=Path)
+    k3.add_argument("file_b", type=Path)
+    k3.add_argument("--field", default="hallucination_type")
+
     args = p.parse_args(argv)
 
     if args.cmd == "build-data":
@@ -96,6 +113,34 @@ def main(argv: list[str] | None = None) -> int:
             out_dir=args.out,
             align_threshold=args.align_threshold,
         )
+        return 0
+
+    if args.cmd == "exp2":
+        from .exp2 import run_exp2
+
+        run_exp2(
+            arms=args.arms,
+            n_mix=args.n_mix,
+            threshold=args.threshold,
+            llm_model=args.llm_model,
+            out_dir=args.out,
+        )
+        return 0
+
+    if args.cmd == "exp3-sample":
+        import json as _json
+
+        from .exp3 import sample_disagreements
+
+        print(_json.dumps(sample_disagreements(out_dir=args.out), indent=2))
+        return 0
+
+    if args.cmd == "exp3-kappa":
+        import json as _json
+
+        from .exp3 import cohens_kappa
+
+        print(_json.dumps(cohens_kappa(args.file_a, args.file_b, args.field), indent=2))
         return 0
 
     return 2

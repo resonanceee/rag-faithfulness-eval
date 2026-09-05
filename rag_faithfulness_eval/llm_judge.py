@@ -97,7 +97,7 @@ class OpenRouterJudge:
                     row = json.loads(line)
                     self._vcache[row["key"]] = row["verdict"]
 
-    def _call(self, user_msg: str, retries: int = 3, max_tokens: int | None = None) -> dict:
+    def _call(self, user_msg: str, retries: int = 10, max_tokens: int | None = None) -> dict:
         body = json.dumps(
             {
                 "model": self.checkpoint,
@@ -125,6 +125,13 @@ class OpenRouterJudge:
             except urllib.error.HTTPError as e:
                 if e.code in (429, 500, 502, 503) and attempt < retries - 1:
                     time.sleep(2**attempt)
+                    continue
+                raise
+            except (urllib.error.URLError, TimeoutError) as e:
+                # network drop: wait it out (up to 1 min per try, ~10 min total)
+                if attempt < retries - 1:
+                    print(f"  network error ({e}); retry {attempt + 1}/{retries}", flush=True)
+                    time.sleep(min(60, 5 * 2**attempt))
                     continue
                 raise
         raise RuntimeError("unreachable: retry loop exhausted")

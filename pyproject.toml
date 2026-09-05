@@ -9,6 +9,9 @@ description = "Measuring RAG faithfulness across EN/DE/IT with NLI judges"
 requires-python = ">=3.11"
 dependencies = []
 
+[project.scripts]
+rfe = "rag_faithfulness_eval.cli:main"
+
 [project.optional-dependencies]
 models = [
     "torch>=2.2",

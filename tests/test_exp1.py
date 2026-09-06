@@ -15,6 +15,7 @@ from rag_faithfulness_eval.exp1 import (
 
 # --- decomposition & alignment ---
 def test_split_claims_offsets_are_verbatim():
+    pytest.importorskip("spacy")  # spacy lives in [models] extra; unit CI skips
     text = "The cat sleeps. A dog barked loudly at noon. It rained."
     claims = split_claims(text)
     assert [text[s:e] for s, e, _ in claims] == [t for _, _, t in claims]

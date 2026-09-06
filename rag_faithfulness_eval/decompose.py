@@ -8,12 +8,12 @@ for LLM-regenerated claims, behind a future flag).
 
 from collections.abc import Iterator
 
-import spacy
-
 _nlp = None
 
 
-def _get_nlp():
+def _get_nlp():  # lazy: spacy lives in the [models] extra, unit CI must not need it
+    import spacy
+
     global _nlp
     if _nlp is None:
         nlp = spacy.blank("en")

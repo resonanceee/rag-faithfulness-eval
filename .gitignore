@@ -8,3 +8,4 @@ data/
 results/
 *.log
 .env
+models/

@@ -90,6 +90,15 @@ both for Italian and overall. DE lags IT substantially on direct judging.
 > Dataset of record uses corpus-noun swapping for DE (fluent, category-
 > preserving, unsupported claims).
 
+### Experiment 4 — Query-in-context variant (vs Exp 1)
+
+Same 18,875 claims (25 incorrect_refusal/truncated rows excluded), premise =
+`QUESTION: q + PASSAGES: p`. Verdict-level agreement with Exp 1: B 90.2%,
+A 80.5%, C 79.6% — the query materially flips individual verdicts, but
+aggregates are stable (B claim-F1 0.481 vs 0.475; only B recall gains +5.7pts).
+Judge ranking unchanged. Response-level exclusion of non-good rows is now the
+protocol for final benchmarks.
+
 ### Experiment 3 — Error taxonomy
 
 `rfe exp3-sample` → `data/annotation/` (72 main + 18 held-out disagreements,

@@ -67,7 +67,20 @@ final label + which reviewer yielded.
 
 ## How to annotate (interactive CLI, no file editing)
 
-**Setup (once per terminal session):**
+### First-time setup (fresh clone, macOS)
+
+The `rfe` command has no external dependencies, so nothing beyond the package
+itself needs installing. Requires Python ≥ 3.11 (check: `python3 --version`;
+if older, `brew install python@3.13` and substitute `python3.13` below).
+
+```sh
+cd /path/to/rag-faithfulness-eval     # repo root after cloning
+python3 -m venv .venv                 # one-time
+source .venv/bin/activate
+pip install -e .                      # one-time; creates the `rfe` command
+```
+
+**Setup (once per terminal session after that):**
 
 ```sh
 cd /Users/res/Code/rag-faithfulness-eval
@@ -75,6 +88,8 @@ source .venv/bin/activate        # makes `rfe` available
 ```
 
 (or prefix every command with `.venv/bin/rfe` / use `.venv/bin/python -m rag_faithfulness_eval`)
+
+When finished annotating: `deactivate` exits the venv.
 
 You are reviewer 1 or 2. For each language file, run:
 

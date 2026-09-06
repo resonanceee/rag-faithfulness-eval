@@ -73,14 +73,22 @@ Claim-level, `neutral_pos` mapping shown (arms B rows use 3-way accuracy):
 
 | Arm | Judge | DE F1 | IT F1 |
 |-----|-------|-------|-------|
-| A | multilingual NLI direct | 0.714 | 0.774 |
+| A | multilingual NLI direct | 0.556 | 0.774 |
 | B | cross-lingual-mix (3-way acc) | 1.000 | 0.875 |
-| C | translate → English NLI judge | **0.795** | 0.786 |
-| D | hybrid + LLM arbitration | **0.868** | **0.860** |
+| C | translate → English NLI judge | 0.726 | 0.786 |
+| D | hybrid + LLM arbitration | **0.678** | **0.862** |
 
 **Quotable**: translate-then-English-judge beats zero-shot multilingual judging
-on German hallucination recall (0.845 vs 0.555). Hybrid LLM arbitration beats
-both — for ~$0.03. DE lags IT substantially on direct multilingual judging.
+on German hallucination recall (0.73 vs 0.39). Hybrid LLM arbitration beats
+both for Italian and overall. DE lags IT substantially on direct judging.
+
+> **Data-quality note (v2)**: initial DE samples had an anglocentric bug —
+> `entity_swap` targeted "first capitalized token", which in German is any
+> noun, producing mangled claims ("Es gibt mehr Siemens..."). v1 (archived in
+> `results/exp2_v1_artifact/`) inflated DE F1 by up to 0.20; ordering D > C > A
+> unchanged, and the German translate-vs-direct gap *widened* after the fix.
+> Dataset of record uses corpus-noun swapping for DE (fluent, category-
+> preserving, unsupported claims).
 
 ### Experiment 3 — Error taxonomy
 

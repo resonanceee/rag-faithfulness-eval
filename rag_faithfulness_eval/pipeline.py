@@ -11,7 +11,7 @@ import random
 from collections import Counter
 from pathlib import Path
 
-from .inject import INJECTIONS, inject
+from .inject import INJECTIONS, corpus_noun_pool, inject
 from .schema import LANGS, Sample
 
 ENTAILMENT = 0  # snli/xnli label convention
@@ -59,12 +59,20 @@ def build_samples(n_per_lang: int = 200, seed: int = 0) -> list[Sample]:
     oversample = {"en": 60, "de": 3, "it": 3}
     for lang in LANGS:
         kept = 0
-        for i, (context, claim) in enumerate(fetchers[lang](n_per_lang * oversample[lang], seed)):
+        candidates = fetchers[lang](n_per_lang * oversample[lang], seed)
+        # German capitalizes every noun -> fixed entity pools produce mangled text.
+        # Swap with corpus nouns instead (fluent, unsupported, category-preserving).
+        noun_pool = corpus_noun_pool([c for _, c in candidates]) if lang == "de" else None
+        for i, (context, claim) in enumerate(candidates):
             if kept >= n_per_lang:
                 break
             kinds = [INJECTIONS[(i + j) % len(INJECTIONS)] for j in range(len(INJECTIONS))]
             bad_claim, kind = next(
-                ((out, k) for k in kinds if (out := inject(claim, k, lang, seed + i)) is not None),
+                (
+                    (out, k)
+                    for k in kinds
+                    if (out := inject(claim, k, lang, seed + i, pool=noun_pool)) is not None
+                ),
                 (None, None),
             )
             if bad_claim is None or kind is None:

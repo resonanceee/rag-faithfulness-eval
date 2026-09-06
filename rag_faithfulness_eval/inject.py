@@ -21,14 +21,23 @@ _YEAR = re.compile(r"\b(19|20)\d{2}\b")
 _DIGIT = re.compile(r"\d")
 
 
-def entity_swap(text: str, lang: str, rng: random.Random) -> str | None:
+def entity_swap(
+    text: str, lang: str, rng: random.Random, pool: list[str] | None = None
+) -> str | None:
     m = _CAPS.search(text, 1)  # skip first char to dodge sentence-initial capital
     if not m:
         return None
-    pool = [e for e in ENTITY_POOLS[lang] if e.lower() != m.group(0).lower()]
+    pool = pool if pool is not None else ENTITY_POOLS[lang]
+    pool = [e for e in pool if e.lower() != m.group(0).lower()]
     if not pool:
         return None
     return text[: m.start()] + rng.choice(pool) + text[m.end() :]
+
+
+def corpus_noun_pool(claims: list[str]) -> list[str]:
+    """Capitalized tokens harvested from claims. For German every noun is
+    capitalized, so this yields a fluent noun pool instead of fixed entities."""
+    return sorted({m.group(0) for c in claims for m in _CAPS.finditer(c)})
 
 
 def numeric_perturb(text: str, rng: random.Random) -> str | None:
@@ -52,8 +61,8 @@ def temporal_perturb(text: str, rng: random.Random) -> str | None:
     return text[: m.start()] + str(new_year) + text[m.end() :]
 
 
-def inject(text: str, kind: str, lang: str, seed: int) -> str | None:
-    """Apply one injection. Deterministic given seed."""
+def inject(text: str, kind: str, lang: str, seed: int, pool: list[str] | None = None) -> str | None:
+    """Apply one injection. Deterministic given seed (and pool for entity_swap)."""
     rng = random.Random(f"{seed}:{kind}:{text}")  # stable across runs
     fn = {
         "entity_swap": entity_swap,
@@ -61,5 +70,5 @@ def inject(text: str, kind: str, lang: str, seed: int) -> str | None:
         "temporal_perturb": temporal_perturb,
     }[kind]
     if kind == "entity_swap":
-        return fn(text, lang, rng)
+        return fn(text, lang, rng, pool)
     return fn(text, rng)

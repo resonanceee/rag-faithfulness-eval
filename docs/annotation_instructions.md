@@ -65,20 +65,42 @@ judge disagreed with the gold label. For each case:
 finish: compute Cohen's kappa per task; adjudicate disagreements together, log
 final label + which reviewer yielded.
 
-## Files (how annotating actually works)
+## How to annotate (interactive CLI, no file editing)
 
-Each line is one JSON object with `id`, `lang`, `context`, `claim`,
-`gold_label`, `judge_verdict`. You annotate by **copying the file to
-`..._reviewer{N}.jsonl` and adding your fields to each line** (in any text
-editor, one line at a time, top to bottom):
+You are reviewer 1 or 2. For each language file, run:
 
-- `task2_<lang>.jsonl` — your main items (annotate all)
-- `task2_<lang>_recheck.jsonl` — the disguised ~10% re-annotation (annotate after
-  the main file, same fields)
-- `task2_heldout_<lang>.jsonl` — DO NOT annotate; reserved for fix validation
-- Never edit the other reviewer's file (`_reviewer1` vs `_reviewer2`)
-- Fields to add per line (Task 2): `gold_ok` (yes/no), `hallucination_type`,
-  `cause`, `fix` — per the rules above
+```sh
+rfe exp3-annotate --reviewer 1 data/annotation/task2_en.jsonl
+rfe exp3-annotate --reviewer 1 data/annotation/task2_de.jsonl
+rfe exp3-annotate --reviewer 1 data/annotation/task2_it.jsonl
+```
 
-Reviewer 2 gets the same `task2_*.jsonl` files; independence = you never see
-each other's `_reviewerN` files until adjudication.
+Reviewer 2 uses `--reviewer 2` on the same input files (your outputs land in
+separate `..._reviewer2.jsonl` files — never look at the other reviewer's
+files until adjudication).
+
+Per item the tool shows CONTEXT, CLAIM, gold label, judge verdict, then asks:
+
+1. **gold label correct?** `y`/`n` — if `n`, item is annotation noise, done.
+2. **hallucination type** — pick one number from the menu.
+3. **cause** — one or more numbers, space-separated (e.g. `1 3`).
+4. **requested fix** — one number.
+
+- Your answer is saved **after every item**; `q` at any prompt saves and quits.
+- Re-run the same command to resume — already-annotated items are skipped.
+- `task2_<lang>_heldout.jsonl`: DO NOT annotate (reserved for fix validation).
+- The fields correspond to the taxonomy rules in Task 2 below.
+
+### Self-agreement pass (after your main files)
+
+Annotate the small recheck files exactly the same way, without re-reading
+your main answers (ids are disguised, you won't recognize the duplicates):
+
+```sh
+rfe exp3-annotate --reviewer 1 data/annotation/task2_de_recheck.jsonl
+rfe exp3-self-agreement data/annotation/task2_de_reviewer1.jsonl \
+    data/annotation/task2_de_recheck_reviewer1.jsonl --field hallucination_type
+```
+
+Target: agreement ≥ 0.90. Below that: pause, re-read the rules, redo the
+last block.

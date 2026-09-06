@@ -160,6 +160,98 @@ def self_agreement(main_file: Path, recheck_file: Path, field: str) -> dict:
     return {"n": len(pairs), "agreement": round(agree / max(1, len(pairs)), 4)}
 
 
+HALLUCINATION_TYPES = [
+    "entity",
+    "numeric",
+    "temporal",
+    "relation",
+    "fabrication",
+    "faithful_but_flagged",
+]
+CAUSES = [
+    "judge_world_knowledge",
+    "tokenization_edge",
+    "bad_decomposition",
+    "bad_alignment",
+    "judge_limits",
+]
+FIXES = ["prompt_fix", "alignment_fix", "decomposition_fix", "threshold_fix", "no_fix_noise"]
+
+
+def _menu(prompt: str, options: list[str], input_fn=input, multi: bool = False) -> list[str]:
+    """Interactive numbered pick. Returns list of chosen option strings."""
+    print(prompt)
+    for i, o in enumerate(options, 1):
+        print(f"  {i}. {o}")
+    while True:
+        raw = input_fn("> ").strip().lower()
+        if raw == "q":
+            raise KeyboardInterrupt
+        picks = raw.replace(",", " ").split() if multi else [raw]
+        try:
+            idxs = [int(x) for x in picks]
+            if idxs and all(1 <= i <= len(options) for i in idxs):
+                return [options[i - 1] for i in idxs]
+        except ValueError:
+            pass
+        print("  invalid - enter number(s) '1' or '1 3' (or q to save+quit)")
+
+
+def annotate(reviewer: int, in_file: Path, input_fn=input, print_fn=print) -> dict:
+    """One-at-a-time annotation loop. Writes `<stem>_reviewer<N>.jsonl`,
+    resumable (skips already-annotated ids). input_fn/print_fn injectable
+    for tests."""
+    out_file = in_file.with_name(f"{in_file.stem}_reviewer{reviewer}.jsonl")
+    done = {}
+    if out_file.exists():
+        for line in out_file.read_text().splitlines():
+            if line.strip():
+                row = json.loads(line)
+                done[row["id"]] = row
+    rows = _load_arm(in_file)
+    n_new = 0
+    try:
+        for i, r in enumerate(rows, 1):
+            if r["id"] in done:
+                continue
+            print_fn(f"\n=== item {i}/{len(rows)}  [{r['id']}]  (q=save+quit) ===")
+            print_fn(f"CONTEXT: {r.get('context', '')}")
+            print_fn(f"CLAIM:   {r.get('claim', '')}")
+            print_fn(f"gold: {r.get('gold_label')}   judge: {r.get('judge_verdict')}")
+            while True:
+                ok = input_fn("gold label correct? [y/n]> ").strip().lower()
+                if ok == "q":
+                    raise KeyboardInterrupt
+                if ok in ("y", "n"):
+                    break
+                print_fn("  answer y or n (q to save+quit)")
+            if ok == "n":
+                done[r["id"]] = {**r, "gold_ok": False, "cause": ["annotation_noise"]}
+            else:
+                htype = _menu("hallucination type:", HALLUCINATION_TYPES, input_fn)[0]
+                cause = _menu("cause (multi ok, e.g. '1 3'):", CAUSES, input_fn, multi=True)
+                fix = _menu("requested fix:", FIXES, input_fn)[0]
+                done[r["id"]] = {
+                    **r,
+                    "gold_ok": True,
+                    "hallucination_type": htype,
+                    "cause": cause,
+                    "fix": fix,
+                }
+            n_new += 1
+            with out_file.open("w") as f:  # save progress after every item
+                for row in done.values():
+                    f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    except KeyboardInterrupt:
+        pass
+    return {
+        "annotated_now": n_new,
+        "total_done": len(done),
+        "out": str(out_file),
+        "remaining": len(rows) - len(done),
+    }
+
+
 def cohens_kappa(file_a: Path, file_b: Path, field: str) -> dict:
     """Kappa on one annotation field between two reviewers (matched by id)."""
     a = {r["id"]: r for r in _load_arm(file_a)}

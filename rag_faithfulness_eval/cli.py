@@ -68,6 +68,10 @@ def main(argv: list[str] | None = None) -> int:
     sa.add_argument("recheck_file", type=Path)
     sa.add_argument("--field", default="hallucination_type")
 
+    an = sub.add_parser("exp3-annotate", help="Exp3: interactive one-by-one annotation")
+    an.add_argument("--reviewer", type=int, required=True, choices=[1, 2])
+    an.add_argument("file", type=Path, help="task file, e.g. data/annotation/task2_de.jsonl")
+
     sub.add_parser("repro", help="T5: recompute metrics from caches and diff recorded results")
 
     args = p.parse_args(argv)
@@ -168,6 +172,16 @@ def main(argv: list[str] | None = None) -> int:
         from .exp3 import self_agreement
 
         print(_json.dumps(self_agreement(args.main_file, args.recheck_file, args.field)))
+        return 0
+
+    if args.cmd == "exp3-annotate":
+        from .exp3 import annotate
+
+        result = annotate(args.reviewer, args.file)
+        print(
+            f"\n{result['annotated_now']} new, {result['total_done']} done, "
+            f"{result['remaining']} remaining -> {result['out']}"
+        )
         return 0
 
     if args.cmd == "repro":

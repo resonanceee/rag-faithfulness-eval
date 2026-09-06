@@ -1,8 +1,10 @@
 from pathlib import Path
 
 from rag_faithfulness_eval.exp3 import (
+    build_recheck,
     cohens_kappa,
     sample_disagreements,
+    self_agreement,
 )
 
 
@@ -110,3 +112,111 @@ def test_disagreement_sampling(tmp_path, monkeypatch):
     assert out["sampled"] >= 2  # 2 EN disagreements + 1 DE disagreement, minus ~20% heldout
     files = list((tmp_path / "ann").glob("task2_*.jsonl"))
     assert files
+
+
+def test_recheck_and_self_agreement(tmp_path):
+    import json
+
+    _write(
+        tmp_path / "task2_de.jsonl",
+        [
+            {
+                "id": f"d-{i}",
+                "lang": "de",
+                "context": "c",
+                "claim": "x",
+                "gold_label": "unfaithful",
+                "judge_verdict": "faithful",
+            }
+            for i in range(20)
+        ],
+    )
+    _write(tmp_path / "task2_heldout_de.jsonl", [{"id": "h-1"}])
+    _write(tmp_path / "task2_de_reviewer1.jsonl", [{"id": "r-1"}])
+    made = build_recheck(tmp_path, fraction=0.1)
+    assert made == {"task2_de_recheck.jsonl": 2}
+    rc = [
+        json.loads(line) for line in (tmp_path / "task2_de_recheck.jsonl").read_text().splitlines()
+    ]
+    assert all(r["id"].endswith("-rc") for r in rc)
+    assert not (tmp_path / "task2_de_reviewer1_recheck.jsonl").exists()
+
+    _write(
+        tmp_path / "task2_de_main_annot.jsonl",
+        [
+            {"id": "d-0", "hallucination_type": "entity"},
+            {"id": "d-1", "hallucination_type": "numeric"},
+        ],
+    )
+    _write(
+        tmp_path / "task2_de_rc_annot.jsonl",
+        [
+            {"id": "d-0-rc", "hallucination_type": "entity"},
+            {"id": "d-1-rc", "hallucination_type": "temporal"},
+        ],
+    )
+    out = self_agreement(
+        tmp_path / "task2_de_main_annot.jsonl",
+        tmp_path / "task2_de_rc_annot.jsonl",
+        "hallucination_type",
+    )
+    assert out == {"n": 2, "agreement": 0.5}
+
+
+def test_annotate_interactive_flow(tmp_path):
+    import json as J
+
+    from rag_faithfulness_eval.exp3 import annotate
+
+    in_file = tmp_path / "task2_de.jsonl"
+    _write(
+        in_file,
+        [
+            {
+                "id": "a-1",
+                "lang": "de",
+                "context": "ctx",
+                "claim": "c1",
+                "gold_label": "unfaithful",
+                "judge_verdict": "faithful",
+            },
+            {
+                "id": "a-2",
+                "lang": "de",
+                "context": "ctx",
+                "claim": "c2",
+                "gold_label": "faithful",
+                "judge_verdict": "unfaithful",
+            },
+            {
+                "id": "a-3",
+                "lang": "de",
+                "context": "ctx",
+                "claim": "c3",
+                "gold_label": "unfaithful",
+                "judge_verdict": "unfaithful",
+            },
+        ],
+    )
+    # a-1: full annotation (y, type=1, causes='1 3', fix=2); a-2: noise (n); a-3: quit
+    answers = iter(["y", "1", "1 3", "2", "n", "q"])
+    out = annotate(
+        1, in_file, input_fn=lambda prompt="": next(answers), print_fn=lambda *a, **k: None
+    )
+    assert out["annotated_now"] == 2 and out["remaining"] == 1
+
+    out_lines = (tmp_path / "task2_de_reviewer1.jsonl").read_text().splitlines()
+    rows = [J.loads(x) for x in out_lines]
+    by_id = {r["id"]: r for r in rows}
+    assert by_id["a-1"]["gold_ok"] is True
+    assert by_id["a-1"]["hallucination_type"] == "entity"
+    assert by_id["a-1"]["cause"] == ["judge_world_knowledge", "bad_decomposition"]
+    assert by_id["a-1"]["fix"] == "alignment_fix"
+    assert by_id["a-2"] == {**by_id["a-2"], "gold_ok": False, "cause": ["annotation_noise"]}
+
+    # resume: a-1, a-2 skipped; answer a-3 then done
+    answers2 = iter(["y", "3", "2", "1"])
+    out2 = annotate(
+        1, in_file, input_fn=lambda prompt="": next(answers2), print_fn=lambda *a, **k: None
+    )
+    assert out2["annotated_now"] == 1 and out2["remaining"] == 0

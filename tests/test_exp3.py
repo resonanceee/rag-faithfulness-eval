@@ -1,6 +1,9 @@
 from pathlib import Path
 
-from rag_faithfulness_eval.exp3 import cohens_kappa, sample_disagreements
+from rag_faithfulness_eval.exp3 import (
+    cohens_kappa,
+    sample_disagreements,
+)
 
 
 def _write(path: Path, rows: list[dict]):

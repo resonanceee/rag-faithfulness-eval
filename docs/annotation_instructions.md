@@ -27,8 +27,14 @@ Wikipedia. The claim was machine-generated.
 5. When torn between `unfaithful` and `unverifiable`: if you can name the specific
    unsupported fact, label `unfaithful`; if the context simply doesn't address
    the claim at all, label `unverifiable`.
-6. Annotate ~10% of your items twice (re-shuffled, second pass) for
-   self-agreement. Target: ≥ 90%.
+6. Self-agreement (10% double-pass) is mechanical, you do NOT shuffle anything:
+   - Files named `task2_<lang>_recheck.jsonl` contain a shuffled ~10% sample of
+     your main file with disguised ids (you won't recognize the duplicates).
+   - After finishing your main file, annotate the recheck file exactly the same
+     way, same rules, without looking back.
+   - Self-agreement is computed after the fact:
+     `rfe exp3-self-agreement <main_reviewer_file> <recheck_reviewer_file> --field hallucination_type`
+   Target: ≥ 0.90. Below that: pause, re-read rules, redo the last block.
 
 **Pace:** budget 1.5-2 min per item. Report time-per-25-items blocks.
 
@@ -59,9 +65,20 @@ judge disagreed with the gold label. For each case:
 finish: compute Cohen's kappa per task; adjudicate disagreements together, log
 final label + which reviewer yielded.
 
-## Files
+## Files (how annotating actually works)
 
-- Input: `data/annotation/<task>_<lang>.jsonl` (one row per item, `id` field)
-- Output: `data/annotation/<task>_<lang>_reviewer{N}.jsonl` (copy of input +
-  your fields appended)
-- Never edit the other reviewer's file.
+Each line is one JSON object with `id`, `lang`, `context`, `claim`,
+`gold_label`, `judge_verdict`. You annotate by **copying the file to
+`..._reviewer{N}.jsonl` and adding your fields to each line** (in any text
+editor, one line at a time, top to bottom):
+
+- `task2_<lang>.jsonl` — your main items (annotate all)
+- `task2_<lang>_recheck.jsonl` — the disguised ~10% re-annotation (annotate after
+  the main file, same fields)
+- `task2_heldout_<lang>.jsonl` — DO NOT annotate; reserved for fix validation
+- Never edit the other reviewer's file (`_reviewer1` vs `_reviewer2`)
+- Fields to add per line (Task 2): `gold_ok` (yes/no), `hallucination_type`,
+  `cause`, `fix` — per the rules above
+
+Reviewer 2 gets the same `task2_*.jsonl` files; independence = you never see
+each other's `_reviewerN` files until adjudication.

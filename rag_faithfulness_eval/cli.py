@@ -59,6 +59,15 @@ def main(argv: list[str] | None = None) -> int:
     k3.add_argument("file_b", type=Path)
     k3.add_argument("--field", default="hallucination_type")
 
+    rc = sub.add_parser("exp3-recheck", help="Exp3: build shuffled 10% recheck files")
+    rc.add_argument("--ann-dir", type=Path, default=Path("data/annotation"))
+    rc.add_argument("--fraction", type=float, default=0.1)
+
+    sa = sub.add_parser("exp3-self-agreement", help="Exp3: self-agreement main vs recheck")
+    sa.add_argument("main_file", type=Path)
+    sa.add_argument("recheck_file", type=Path)
+    sa.add_argument("--field", default="hallucination_type")
+
     sub.add_parser("repro", help="T5: recompute metrics from caches and diff recorded results")
 
     args = p.parse_args(argv)
@@ -143,6 +152,22 @@ def main(argv: list[str] | None = None) -> int:
         from .exp3 import cohens_kappa
 
         print(_json.dumps(cohens_kappa(args.file_a, args.file_b, args.field), indent=2))
+        return 0
+
+    if args.cmd == "exp3-recheck":
+        import json as _json
+
+        from .exp3 import build_recheck
+
+        print(_json.dumps(build_recheck(args.ann_dir, args.fraction), indent=2))
+        return 0
+
+    if args.cmd == "exp3-self-agreement":
+        import json as _json
+
+        from .exp3 import self_agreement
+
+        print(_json.dumps(self_agreement(args.main_file, args.recheck_file, args.field)))
         return 0
 
     if args.cmd == "repro":

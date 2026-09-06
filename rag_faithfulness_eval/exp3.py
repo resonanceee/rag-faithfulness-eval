@@ -125,6 +125,41 @@ def _claim_map() -> dict:
     return {c["id"]: c for r in load_ragtruth("test") for c in iter_claims(r)}
 
 
+def build_recheck(ann_dir: Path, fraction: float = 0.1, seed: int = 1) -> dict:
+    """Emit task2_<lang>_recheck.jsonl: a shuffled `fraction` sample of each
+    task2_<lang>.jsonl with ids suffixed '-rc' (so reviewers can't spot dupes).
+    Reviewer annotates it like any other file; self_agreement() ties them back."""
+    rng = random.Random(seed)
+    made = {}
+    for f in sorted(ann_dir.glob("task2_*.jsonl")):
+        if any(x in f.name for x in ("_recheck", "_heldout", "_reviewer")):
+            continue
+        rows = _load_arm(f)
+        k = max(1, round(len(rows) * fraction))
+        picks = rng.sample(rows, k)
+        rng.shuffle(picks)
+        out = f.with_name(f.stem + "_recheck.jsonl")
+        with out.open("w") as fh:
+            for r in picks:
+                fh.write(json.dumps({**r, "id": r["id"] + "-rc"}, ensure_ascii=False) + "\n")
+        made[out.name] = k
+    return made
+
+
+def self_agreement(main_file: Path, recheck_file: Path, field: str) -> dict:
+    """% of recheck items where the reviewer's verdict matches their own
+    verdict on the original item. Annotation protocol target: >= 90%."""
+    main = {r["id"]: r for r in _load_arm(main_file)}
+    recheck = _load_arm(recheck_file)
+    pairs = [
+        (main[r["id"].removesuffix("-rc")][field], r[field])
+        for r in recheck
+        if r["id"].removesuffix("-rc") in main and field in r
+    ]
+    agree = sum(a == b for a, b in pairs)
+    return {"n": len(pairs), "agreement": round(agree / max(1, len(pairs)), 4)}
+
+
 def cohens_kappa(file_a: Path, file_b: Path, field: str) -> dict:
     """Kappa on one annotation field between two reviewers (matched by id)."""
     a = {r["id"]: r for r in _load_arm(file_a)}

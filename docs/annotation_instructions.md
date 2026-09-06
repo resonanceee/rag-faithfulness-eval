@@ -67,6 +67,15 @@ final label + which reviewer yielded.
 
 ## How to annotate (interactive CLI, no file editing)
 
+**Setup (once per terminal session):**
+
+```sh
+cd /Users/res/Code/rag-faithfulness-eval
+source .venv/bin/activate        # makes `rfe` available
+```
+
+(or prefix every command with `.venv/bin/rfe` / use `.venv/bin/python -m rag_faithfulness_eval`)
+
 You are reviewer 1 or 2. For each language file, run:
 
 ```sh

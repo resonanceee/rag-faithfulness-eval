@@ -1,0 +1,22 @@
+{
+  "benchmarks": {
+    "seed": 0,
+    "align_threshold": 0.2,
+    "hybrid_threshold": 0.85,
+    "llm_temperature": 0,
+    "split": "test"
+  },
+  "checkpoints": {
+    "MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7": "b5113eb38ab6",
+    "MoritzLaurer/mDeBERTa-v3-base-mnli-xnli": "8adb042d524e",
+    "MoritzLaurer/deberta-v3-base-mnli-fever-anli": "6f5cf0a2b59c",
+    "Helsinki-NLP/opus-mt-de-en": "1a922f3b32a8",
+    "Helsinki-NLP/opus-mt-it-en": "42556a0848fc"
+  },
+  "llm_judges": ["z-ai/glm-5.3-flash"],
+  "datasets": {
+    "wandb/RAGTruth-processed": "test 2700 rows, 943 hallucinated",
+    "phase1_synthetic": "data/samples.jsonl 1200 rows (seed 0)"
+  },
+  "notes": "Rerun with caches deleted = full recompute. HF revisions pinned above; code reads latest unless cloned."
+}

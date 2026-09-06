@@ -47,6 +47,52 @@ Per premise, the pipeline emits one faithful sample (gold entailment hypothesis)
 and one unfaithful sample (deterministic injection: entity swap / numeric /
 temporal), 1:1 balanced. Injection type balance is entity-heavy (see build report).
 
+## Results
+
+### Experiment 1 — Judge calibration on RAGTruth (test, 2700 rows → 18,903 claims)
+
+Claim-level, `neutral_neg` mapping (LLM = glm-5.3-flash):
+
+| Arm | Judge | Precision | Recall | F1 | Response-level F1 |
+|-----|-------|-----------|--------|-----|-------------------|
+| A | multilingual NLI (2mil7) | 0.104 | 0.229 | 0.143 | 0.446 |
+| B | LLM (glm-5.3-flash) | 0.377 | 0.641 | **0.475** | **0.753** |
+| C | hybrid (NLI ≥0.85 → LLM) | 0.210 | 0.354 | 0.263 | 0.572 |
+| D | no-decomposition baseline | — | — | — | 0.107 |
+| | random-alignment control | 0.063 | 0.138 | 0.087 | — |
+
+- NLI ECE 0.113; hybrid proxy-ratio 0.345; LLM repeatability 91.3% (2 full runs)
+- Judge B cost: ~$4 for 2×18.9k claims via OpenRouter. Judge A/D cost: $0 (local).
+- Direct NLI is weak on real RAG data despite looking strong on synthetic
+  injections: confident-wrong predictions are why hybrid arbitration underperforms.
+- Decomposition is load-bearing (D recall 0.066 at response level).
+
+### Experiment 2 — Cross-lingual DE/IT (Phase 1 synthetic gold, 400+400)
+
+Claim-level, `neutral_pos` mapping shown (arms B rows use 3-way accuracy):
+
+| Arm | Judge | DE F1 | IT F1 |
+|-----|-------|-------|-------|
+| A | multilingual NLI direct | 0.714 | 0.774 |
+| B | cross-lingual-mix (3-way acc) | 1.000 | 0.875 |
+| C | translate → English NLI judge | **0.795** | 0.786 |
+| D | hybrid + LLM arbitration | **0.868** | **0.860** |
+
+**Quotable**: translate-then-English-judge beats zero-shot multilingual judging
+on German hallucination recall (0.845 vs 0.555). Hybrid LLM arbitration beats
+both — for ~$0.03. DE lags IT substantially on direct multilingual judging.
+
+### Experiment 3 — Error taxonomy
+
+`rfe exp3-sample` → `data/annotation/` (72 main + 18 held-out disagreements,
+two-reviewer protocol in `docs/annotation_instructions.md`).
+Awaiting human annotation; then `rfe exp3-kappa` + taxonomy aggregation.
+
+### Reproducibility
+
+`rfe repro` recomputes all core metrics from caches → 0 mismatches (T5).
+Pinned revisions + seeds: `config/benchmark.json`.
+
 ## Development
 
 ```sh

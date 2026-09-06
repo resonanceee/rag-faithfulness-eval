@@ -59,6 +59,8 @@ def main(argv: list[str] | None = None) -> int:
     k3.add_argument("file_b", type=Path)
     k3.add_argument("--field", default="hallucination_type")
 
+    sub.add_parser("repro", help="T5: recompute metrics from caches and diff recorded results")
+
     args = p.parse_args(argv)
 
     if args.cmd == "build-data":
@@ -142,5 +144,15 @@ def main(argv: list[str] | None = None) -> int:
 
         print(_json.dumps(cohens_kappa(args.file_a, args.file_b, args.field), indent=2))
         return 0
+
+    if args.cmd == "repro":
+        from .repro import diff_summary, recompute_exp1, recompute_exp2
+
+        problems = diff_summary(Path("results/exp1/summary.csv"), recompute_exp1())
+        problems += diff_summary(Path("results/exp2/summary.csv"), recompute_exp2())
+        for p in problems:
+            print(p)
+        print(f"reproducibility: {'FAIL' if problems else 'OK'} ({len(problems)} mismatches)")
+        return 1 if problems else 0
 
     return 2

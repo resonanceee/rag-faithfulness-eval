@@ -129,6 +129,13 @@ def safe_log(x: float) -> float:
     return math.log(max(x, 1e-12))
 
 
+def premise_of(claim: dict, mode: str = "plain") -> str:
+    """plain: passages only (Exp1). query: QUESTION + PASSAGES, labeled (Exp4)."""
+    if mode == "query":
+        return f"QUESTION: {claim['query']}\nPASSAGES: {claim['context']}"
+    return claim["context"]
+
+
 def run_exp1(
     split: str = "test",
     limit: int | None = None,
@@ -140,12 +147,22 @@ def run_exp1(
     batch_size: int = 32,
     align_threshold: float = 0.2,  # RAGTruth spans are sub-sentence; 0.5 starves gold
     max_workers: int = 8,
+    premise_mode: str = "plain",
+    exclude_non_good: bool = False,
 ) -> dict:
-    """Run Experiment 1. Returns summary dict; writes JSONL/CSV/JSON into out_dir."""
+    """Run Experiment 1 (or Exp4 = same harness, premise_mode='query').
+
+    Returns summary dict; writes JSONL/CSV/JSON into out_dir. Claim ids are
+    stable across modes, so Exp4 rows join 1:1 with Exp1 rows by id.
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
     cost_log = CostLog()
 
     rows = load_ragtruth(split)
+    if exclude_non_good:
+        before = len(rows)
+        rows = [r for r in rows if r["quality"] == "good"]
+        print(f"excluded {before - len(rows)} non-good rows (incorrect_refusal/truncated)")
     if limit:
         rows = rows[:limit]
     claims = list(itertools.chain.from_iterable(iter_claims(r, align_threshold) for r in rows))
@@ -161,7 +178,9 @@ def run_exp1(
     if "A" in arms or "C" in arms or "D" in arms:
         with Timer() as t_nli:
             nli = CachedJudge(NLIJudge(), out_dir / "nli_cache.jsonl")
-            all_scores = nli.score_batch([(c["context"], c["claim"]) for c in claims], batch_size)
+            all_scores = nli.score_batch(
+                [(premise_of(c, premise_mode), c["claim"]) for c in claims], batch_size
+            )
             nli_scores = dict(zip((c["id"] for c in claims), all_scores, strict=True))
         print(f"NLI scoring done in {Timer.fmt(t_nli.seconds)}")
     else:
@@ -185,7 +204,8 @@ def run_exp1(
                 verdicts[key] = {}
                 executor = ThreadPoolExecutor(max_workers=max_workers)
                 futures = {
-                    executor.submit(llm.verdict, c["context"], c["claim"]): c["id"] for c in claims
+                    executor.submit(llm.verdict, premise_of(c, premise_mode), c["claim"]): c["id"]
+                    for c in claims
                 }
                 for i, fut in enumerate(as_completed(futures)):
                     verdicts[key][futures[fut]] = fut.result()
@@ -201,7 +221,9 @@ def run_exp1(
             )
             hybrid = ArmC(nli, llm, threshold)  # type: ignore[possibly-undefined]
             verdicts["C"] = {
-                c["id"]: hybrid.verdict(nli_scores[c["id"]], c["context"], c["claim"])
+                c["id"]: hybrid.verdict(
+                    nli_scores[c["id"]], premise_of(c, premise_mode), c["claim"]
+                )
                 for c in claims
             }
             print(f"Arm C proxy-ratio: {hybrid.proxy_ratio:.3f}")
@@ -209,7 +231,10 @@ def run_exp1(
     row_verdicts_d: dict[str, str] = {}
     with Timer() as t_d:
         if "D" in arms:
-            d_scores = nli.score_batch([(r["context"], r["output"]) for r in rows], batch_size)  # type: ignore[possibly-undefined]
+            d_scores = nli.score_batch(  # type: ignore[possibly-undefined]
+                [(premise_of({**r, "claim": ""}, premise_mode), r["output"]) for r in rows],
+                batch_size,
+            )
             row_verdicts_d = dict(
                 zip((r["id"] for r in rows), (nli_verdict(s)[0] for s in d_scores), strict=True)
             )

@@ -74,6 +74,14 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("repro", help="T5: recompute metrics from caches and diff recorded results")
 
+    e4 = sub.add_parser("exp4", help="Exp4: like Exp1 but query labeled in premise")
+    e4.add_argument("--arms", default="ABCD")
+    e4.add_argument("--repeat", type=int, default=1)
+    e4.add_argument("--limit", type=int, default=None)
+    e4.add_argument("--llm-model", default="z-ai/glm-5.3-flash")
+    e4.add_argument("--threshold", type=float, default=0.85)
+    e4.add_argument("--out", type=Path, default=Path("results/exp4"))
+
     args = p.parse_args(argv)
 
     if args.cmd == "build-data":
@@ -139,6 +147,22 @@ def main(argv: list[str] | None = None) -> int:
             threshold=args.threshold,
             llm_model=args.llm_model,
             out_dir=args.out,
+        )
+        return 0
+
+    if args.cmd == "exp4":
+        from .exp1 import run_exp1
+
+        run_exp1(
+            split="test",
+            limit=args.limit,
+            arms=args.arms,
+            repeat=args.repeat,
+            llm_model=args.llm_model,
+            threshold=args.threshold,
+            out_dir=args.out,
+            premise_mode="query",
+            exclude_non_good=True,
         )
         return 0
 

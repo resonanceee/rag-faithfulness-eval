@@ -124,3 +124,11 @@ def test_load_api_key_from_env_file(tmp_path, monkeypatch):
     assert lj.load_api_key(tmp_path / ".env") == "sk-test"
     with pytest.raises(RuntimeError):
         lj.load_api_key(tmp_path / "nope")
+
+
+def test_premise_of_modes():
+    c = {"context": "Some passages.", "query": "What is X?", "claim": "X is Y."}
+    from rag_faithfulness_eval.exp1 import premise_of
+
+    assert premise_of(c, "plain") == "Some passages."
+    assert premise_of(c, "query") == "QUESTION: What is X?\nPASSAGES: Some passages."

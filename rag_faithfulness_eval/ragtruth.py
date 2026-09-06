@@ -44,6 +44,7 @@ def load_ragtruth(split: str = "test", cache_dir: Path = Path("data/ragtruth")) 
                 "output": r["output"],
                 "task_type": r["task_type"],
                 "model": r["model"],
+                "quality": r["quality"],
                 "spans": [
                     {"start": int(s["start"]), "end": int(s["end"]), "text": s["text"]}
                     for s in spans

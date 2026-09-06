@@ -49,6 +49,7 @@ def iter_claims(row: dict, threshold: float = 0.5) -> Iterator[dict]:
             "row_id": row["id"],
             "lang": "en",
             "context": row["context"],
+            "query": row.get("query", ""),
             "claim": text,
             "start": start,
             "end": end,

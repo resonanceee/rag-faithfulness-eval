@@ -88,6 +88,16 @@ both — for ~$0.03. DE lags IT substantially on direct multilingual judging.
 two-reviewer protocol in `docs/annotation_instructions.md`).
 Awaiting human annotation; then `rfe exp3-kappa` + taxonomy aggregation.
 
+### Distillation (Phase 6, branch `distillation`) — negative result
+
+Teacher 2mil7 (279M) → student paraphrase-multilingual-MiniLM-L12-v2 (118M),
+1 epoch on 150k pairs (100k MNLI-EN + 25k de_mnli + 25k it_mnli), KL+CE 70/30, T=2.
+Student is 6.35x faster, 2.4x smaller — but failed parity: F1 0.358 vs teacher
+0.503 on the DE/IT benchmark, with the IT drop catastrophic (0.310 vs 0.662)
+and teacher-student agreement only ~58%. **Not promoted** (merge criterion:
+parity within noise AND faster). Plausible fixes for a retry: multi-epoch,
+IT-heavier mix, alpha annealing. Branch kept; teacher remains default judge.
+
 ### Reproducibility
 
 `rfe repro` recomputes all core metrics from caches → 0 mismatches (T5).

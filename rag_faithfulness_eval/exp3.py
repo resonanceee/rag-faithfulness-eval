@@ -252,6 +252,72 @@ def annotate(reviewer: int, in_file: Path, input_fn=input, print_fn=print) -> di
     }
 
 
+def adjudicate(
+    ann_dir: Path = Path("data/annotation"),
+    out_file: Path = Path("results/adjudication_final.jsonl"),
+    input_fn=input,
+    print_fn=print,
+) -> dict:
+    """Interactive joint adjudication of reviewer disagreements.
+
+    Shows item + both reviewers' labels; asks final gold_ok and (if yes) final
+    type. Resumable; decisions append to out_file.
+    """
+    decided: dict[str, dict] = {}
+    if out_file.exists():
+        for line in out_file.read_text().splitlines():
+            if line.strip():
+                row = json.loads(line)
+                decided[row["id"]] = row
+    queue = []
+    for lang in ("en", "de", "it"):
+        r1 = {r["id"]: r for r in _load_arm(ann_dir / f"task2_{lang}_reviewer1.jsonl")}
+        r2 = {r["id"]: r for r in _load_arm(ann_dir / f"task2_{lang}_reviewer2.jsonl")}
+        for cid in sorted(set(r1) & set(r2)):
+            t1 = r1[cid].get("hallucination_type", "annotation_noise")
+            t2 = r2[cid].get("hallucination_type", "annotation_noise")
+            g1, g2 = r1[cid].get("gold_ok", True), r2[cid].get("gold_ok", True)
+            if g1 != g2 or t1 != t2:
+                queue.append(
+                    {"id": cid, "lang": lang, "row": r1[cid], "r1": (g1, t1), "r2": (g2, t2)}
+                )
+    print_fn(f"{len(queue)} disagreements, {len(decided)} already adjudicated")
+    n_new = 0
+    try:
+        for i, item in enumerate(queue, 1):
+            if item["id"] in decided:
+                continue
+            r = item["row"]
+            print_fn(f"\n=== {i}/{len(queue)} [{item['id']}] ({item['lang']})  q=save+quit")
+            print_fn(f"CONTEXT: {r.get('context', '')[:500]}")
+            print_fn(f"CLAIM:   {r.get('claim', '')}")
+            print_fn(f"gold: {r.get('gold_label')}  judge: {r.get('judge_verdict')}")
+            print_fn(f"R1: gold_ok={item['r1'][0]} type={item['r1'][1]}")
+            print_fn(f"R2: gold_ok={item['r2'][0]} type={item['r2'][1]}")
+            while True:
+                ok = input_fn("final gold_ok (was the gold label right)? [y/n]> ").strip().lower()
+                if ok == "q":
+                    raise KeyboardInterrupt
+                if ok in ("y", "n"):
+                    break
+                print_fn("  y or n")
+            final = {"id": item["id"], "lang": item["lang"], "gold_ok": ok == "y"}
+            if ok == "y":
+                options = HALLUCINATION_TYPES + ["annotation_noise"]
+                final["hallucination_type"] = _menu("final type:", options, input_fn)[0]
+            else:
+                final["hallucination_type"] = "annotation_noise"
+            decided[item["id"]] = final
+            n_new += 1
+            out_file.parent.mkdir(parents=True, exist_ok=True)
+            with out_file.open("w") as f:
+                for v in decided.values():
+                    f.write(json.dumps(v, ensure_ascii=False) + "\n")
+    except KeyboardInterrupt:
+        pass
+    return {"adjudicated_now": n_new, "total": len(decided), "remaining": len(queue) - len(decided)}
+
+
 def cohens_kappa(file_a: Path, file_b: Path, field: str) -> dict:
     """Kappa on one annotation field between two reviewers (matched by id)."""
     a = {r["id"]: r for r in _load_arm(file_a)}

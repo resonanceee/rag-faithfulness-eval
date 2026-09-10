@@ -72,6 +72,8 @@ def main(argv: list[str] | None = None) -> int:
     an.add_argument("--reviewer", type=int, required=True, choices=[1, 2])
     an.add_argument("file", type=Path, help="task file, e.g. data/annotation/task2_de.jsonl")
 
+    sub.add_parser("exp3-adjudicate", help="Exp3: joint adjudication of disagreements")
+
     sub.add_parser("repro", help="T5: recompute metrics from caches and diff recorded results")
 
     e4 = sub.add_parser("exp4", help="Exp4: like Exp1 but query labeled in premise")
@@ -205,6 +207,16 @@ def main(argv: list[str] | None = None) -> int:
         print(
             f"\n{result['annotated_now']} new, {result['total_done']} done, "
             f"{result['remaining']} remaining -> {result['out']}"
+        )
+        return 0
+
+    if args.cmd == "exp3-adjudicate":
+        from .exp3 import adjudicate
+
+        result = adjudicate()
+        print(
+            f"\n{result['adjudicated_now']} new, {result['total']} total, "
+            f"{result['remaining']} remaining"
         )
         return 0
 

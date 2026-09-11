@@ -84,6 +84,12 @@ def main(argv: list[str] | None = None) -> int:
     e4.add_argument("--threshold", type=float, default=0.85)
     e4.add_argument("--out", type=Path, default=Path("results/exp4"))
 
+    e5 = sub.add_parser("exp5", help="Exp5/Task1: judge model sweep on fixed sample")
+    e5.add_argument("--repeat", type=int, default=2)
+    e5.add_argument("--models", nargs="*", default=None, help="subset of sweep models")
+    e5.add_argument("--build-sample-only", action="store_true")
+    e5.add_argument("--out", type=Path, default=Path("results/exp5"))
+
     args = p.parse_args(argv)
 
     if args.cmd == "build-data":
@@ -166,6 +172,18 @@ def main(argv: list[str] | None = None) -> int:
             premise_mode="query",
             exclude_non_good=True,
         )
+        return 0
+
+    if args.cmd == "exp5":
+        from .exp5 import build_sample, run_sweep
+
+        if args.build_sample_only:
+            s = build_sample(out_dir=args.out)
+            print(
+                f"sample: {len(s)} claims ({sum(c['gold_hallucinated'] for c in s)} hallucinated)"
+            )
+            return 0
+        run_sweep(models=args.models, repeat=args.repeat, out_dir=args.out)
         return 0
 
     if args.cmd == "exp3-sample":

@@ -6,6 +6,7 @@ __pycache__/
 dist/
 data/
 results/
+MID_EXPERIMENT_FINDINGS.md
 *.log
 .env
 models/

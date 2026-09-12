@@ -131,10 +131,16 @@ def adjust_experiment(
                 )
                 for r_applied, label in ((0.0, "recorded"), (rate, "noise_corrected")):
                     mm = dict(m) if r_applied == 0 else corrected(m, r_applied)
-                    row = {"exp": exp_dir.name, "arm": arm, "lang": lang,
-                           "metric_set": tag, "variant": label,
-                           "noise_rate": round(r_applied, 4), **mm,
-                           "headline": tag == headline}
+                    row = {
+                        "exp": exp_dir.name,
+                        "arm": arm,
+                        "lang": lang,
+                        "metric_set": tag,
+                        "variant": label,
+                        "noise_rate": round(r_applied, 4),
+                        **mm,
+                        "headline": tag == headline,
+                    }
                     out.append(row)
     return out
 
@@ -171,8 +177,10 @@ def main(out_path: Path = Path("results/noise_adjusted.csv")) -> list[dict]:
         w.writerows(rows)
     for r in rows:
         if r["headline"] and r["variant"] == "noise_corrected":
-            print(f"{r['exp']}/{r['arm']}/{r['lang']}: F1 {r['f1']} "
-                  f"(r={r['noise_rate']}) prec={r['precision']} rec={r['recall']}")
+            print(
+                f"{r['exp']}/{r['arm']}/{r['lang']}: F1 {r['f1']} "
+                f"(r={r['noise_rate']}) prec={r['precision']} rec={r['recall']}"
+            )
     return rows
 
 

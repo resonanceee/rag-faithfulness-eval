@@ -95,9 +95,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     ts.add_argument("--out", type=Path, default=Path("results/threshold_sweep"))
 
-    na = sub.add_parser(
-        "noise-adjust", help="Task3: noise-corrected metrics from Exp3 flags ($0)"
-    )
+    na = sub.add_parser("noise-adjust", help="Task3: noise-corrected metrics from Exp3 flags ($0)")
     na.add_argument("--out", type=Path, default=Path("results/noise_adjusted.csv"))
 
     xq = sub.add_parser(

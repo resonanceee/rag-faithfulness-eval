@@ -38,11 +38,7 @@ def _claims_for(exp_dir: Path) -> tuple[list[dict], str]:
     all_rows = load_ragtruth("test")
     rows = [r for r in all_rows if r["quality"] == "good"] if query else all_rows
     mode = "query" if query else "plain"
-    claims = [
-        {**c, "premise": premise_of(c, mode)}
-        for r in rows
-        for c in iter_claims(r, 0.2)
-    ]
+    claims = [{**c, "premise": premise_of(c, mode)} for r in rows for c in iter_claims(r, 0.2)]
     return claims, mode
 
 
@@ -82,8 +78,7 @@ def sweep(
     row_gold = sorted({c["row_id"] for c in claims})
     # row gold: a row is hallucinated iff any aligned claim is gold-hallucinated
     rg = {
-        rid: any(c["gold_hallucinated"] for c in claims if c["row_id"] == rid)
-        for rid in row_gold
+        rid: any(c["gold_hallucinated"] for c in claims if c["row_id"] == rid) for rid in row_gold
     }
 
     summaries = _load_jsonl(exp_dir / "arm_A.jsonl") if (exp_dir / "arm_A.jsonl").exists() else None
@@ -133,8 +128,9 @@ def sweep(
         a_end = next(r for r in out_rows if r["threshold"] == 0.0)
         rec = {r["id"]: r["verdict"] for r in _load_jsonl(exp_dir / "arm_A.jsonl")}
         rec_m = binary_metrics(golds, verdicts_to_binary([rec[c["id"]] for c in claims], False))
-        assert abs(rec_m["f1"] - a_end["claim_f1_nn"]) < 1e-3, \
+        assert abs(rec_m["f1"] - a_end["claim_f1_nn"]) < 1e-3, (
             f"{exp_dir}: t=0.0 endpoint fails to reproduce Arm A"
+        )
 
     out_dir.mkdir(parents=True, exist_ok=True)
     with (out_dir / f"{tag or exp_dir.name}_sweep.csv").open("w", newline="") as f:
@@ -163,10 +159,7 @@ def sweep_sample_judge(
 
     sample = _load_jsonl(sample_path)
     nli_raw = {r["key"]: r["probs"] for r in _load_jsonl(Path("results/exp4/nli_cache.jsonl"))}
-    judge_raw = {
-        r["id"]: r["verdict"]
-        for r in _load_jsonl(verdicts_path)
-    }
+    judge_raw = {r["id"]: r["verdict"] for r in _load_jsonl(verdicts_path)}
     nli, jv = {}, {}
     for c in sample:
         nk = _cache_key(DEFAULT_CHECKPOINT, c["premise"], c["claim"])
@@ -219,8 +212,10 @@ def main(out_dir: Path = Path("results/threshold_sweep")) -> dict:
         report[name] = {"best": best, "sweep": rows}
         pure_nli = rows[0]  # t=0: nothing escalated
         pure_llm = rows[-1]  # t=1: ~everything escalated
-        print(f"[{name}] best t={best['threshold']} F1={best['claim_f1_nn']} "
-              f"(llm_share={best['llm_share']})")
+        print(
+            f"[{name}] best t={best['threshold']} F1={best['claim_f1_nn']} "
+            f"(llm_share={best['llm_share']})"
+        )
         print(f"[{name}] pure GLM F1={pure_llm['claim_f1_nn']} cost-share=1.0")
         print(f"[{name}] pure NLI F1={pure_nli['claim_f1_nn']} cost-share=0.0")
 
@@ -236,8 +231,10 @@ def main(out_dir: Path = Path("results/threshold_sweep")) -> dict:
         )
         best = best_by_f1(rows)
         report["exp4_hybrid_ling"] = {"best": best, "sweep": rows}
-        print(f"[exp4 hybrid@ling] best t={best['threshold']} F1={best['claim_f1_nn']} "
-              f"(llm_share={best['llm_share']})")
+        print(
+            f"[exp4 hybrid@ling] best t={best['threshold']} F1={best['claim_f1_nn']} "
+            f"(llm_share={best['llm_share']})"
+        )
         print(f"[exp4 hybrid@ling] pure ling F1={rows[-1]['claim_f1_nn']} cost-share=1.0")
 
     for label, path in (
@@ -251,8 +248,10 @@ def main(out_dir: Path = Path("results/threshold_sweep")) -> dict:
         rows = sweep_sample_judge(p, label, out_dir)
         best = max(rows, key=lambda r: r["f1_natural"])
         report[f"sample_hybrid_{label}"] = {"best": best, "sweep": rows}
-        print(f"[hybrid@{label}] best t={best['threshold']} F1nat={best['f1_natural']} "
-              f"llm_share={best['llm_share']}")
+        print(
+            f"[hybrid@{label}] best t={best['threshold']} F1nat={best['f1_natural']} "
+            f"llm_share={best['llm_share']}"
+        )
         print(f"[hybrid@{label}] pure F1nat={rows[-1]['f1_natural']} cost-share=1.0")
 
     (out_dir / "threshold_sweep.json").write_text(json.dumps(report, indent=2))

@@ -54,7 +54,40 @@ def impact_report(
     t_params = sum(p.numel() for p in teacher.model.parameters())
     report["student_params"] = n_params
     report["teacher_params"] = t_params
+    report["filter"] = {
+        lang: {
+            name: filter_report({s["id"]: scores[s["id"]] for s in samples}, samples, lang)
+            for name, scores in (("student", s_scores), ("teacher", t_scores))
+        }
+        for lang in ("de", "it", "all")
+    }
     return report
+
+
+def filter_report(scores: dict, samples: list[dict], lang: str) -> dict:
+    """High-recall filter framing (T5 retry goal): judge as cheap first stage —
+    pass-through claims with p(entailment) high, escalate the rest to an LLM.
+
+    Sweep: at each retention share, recall of gold-hallucinated claims among
+    the ESCALATED pool. Filter is useful iff most hallucinations land in a
+    small escalated share. Reports recall@shares + min share for recall>=0.95.
+    """
+    sel = [s for s in samples if lang == "all" or s["lang"] == lang]
+    ranked = sorted(sel, key=lambda s: scores[s["id"]]["entailment"])  # least entailed first
+    n_pos = sum(s["gold_hallucinated"] for s in sel)
+    curve = {}
+    for share in (0.1, 0.2, 0.3, 0.5, 0.75, 1.0):
+        k = max(1, round(len(ranked) * share))
+        escalated = ranked[:k]
+        rec = sum(s["gold_hallucinated"] for s in escalated) / max(1, n_pos)
+        curve[str(share)] = {"recall": round(rec, 4), "escalated": k}
+    best = None
+    for k in range(1, len(ranked) + 1):
+        rec = sum(s["gold_hallucinated"] for s in ranked[:k]) / max(1, n_pos)
+        if rec >= 0.95:
+            best = {"share": round(k / len(ranked), 4), "recall": round(rec, 4)}
+            break
+    return {"curve": curve, "share_for_recall_0.95": best}
 
 
 if __name__ == "__main__":

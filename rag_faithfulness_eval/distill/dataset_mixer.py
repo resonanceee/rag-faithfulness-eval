@@ -10,7 +10,9 @@ import json
 import random
 from pathlib import Path
 
-DEFAULT_SIZES = {"en": 100_000, "de": 25_000, "it": 25_000}
+# retry (T5): IT-heavy mix — v1 (100k/25k/25k) collapsed IT F1 (0.31 vs teacher 0.66);
+# rebalance toward IT, trim EN majority
+DEFAULT_SIZES = {"en": 60_000, "de": 30_000, "it": 60_000}
 
 
 def mix_pool(out_path: Path, sizes: dict = DEFAULT_SIZES, seed: int = 0) -> dict:

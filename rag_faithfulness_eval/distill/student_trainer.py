@@ -29,6 +29,7 @@ class DistillationTrainer:
         self.torch = torch
         self.T = temperature
         self.alpha = alpha
+        self.alpha0 = alpha  # start value for annealing
         self.device = device or ("mps" if torch.backends.mps.is_available() else "cpu")
         from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
@@ -87,16 +88,24 @@ class DistillationTrainer:
         batch_size: int = 32,
         seed: int = 0,
         max_rows: int | None = None,
+        alpha_end: float | None = None,
     ) -> dict:
+        """alpha_end: if set, linearly anneal alpha -> alpha_end across training.
+        Retry (T5): v1 ran 1 epoch at fixed alpha=0.7; retry = 3 epochs, anneal
+        0.7 -> 0.3 (start teacher-led, end gold-led; soft labels regularize early)."""
         rows = self.load_rows(labels_path, pool_path)
         if max_rows:
             rows = rows[:max_rows]
         rng = random.Random(seed)
         self.model.train()
+        total_steps = epochs * ((len(rows) + batch_size - 1) // batch_size)
         step, losses = 0, []
         for epoch in range(epochs):
             rng.shuffle(rows)
             for i in range(0, len(rows), batch_size):
+                if alpha_end is not None:
+                    frac = step / max(1, total_steps)
+                    self.alpha = self.alpha0 + (alpha_end - self.alpha0) * frac
                 loss = self._batch_loss(rows[i : i + batch_size])
                 loss.backward()
                 if (step + 1) % 4 == 0:
@@ -108,6 +117,12 @@ class DistillationTrainer:
                     print(
                         f"epoch {epoch} step {step} loss {sum(losses[-200:]) / 200:.4f}", flush=True
                     )
+            # per-epoch checkpoint: MPS allocator bloat killed a 2h run at epoch 2
+            # once; never again lose everything above a single epoch
+            ck = Path(f"{self.out_dir}_e{epoch}")
+            ck.mkdir(parents=True, exist_ok=True)
+            self.model.save_pretrained(ck)
+            self.tok.save_pretrained(ck)
         self.out_dir.mkdir(parents=True, exist_ok=True)
         self.model.save_pretrained(self.out_dir)
         self.tok.save_pretrained(self.out_dir)
@@ -116,4 +131,12 @@ class DistillationTrainer:
 
 if __name__ == "__main__":
     t = DistillationTrainer(Path("models/student"))
-    print(t.train(Path("data/distill/teacher_labels.jsonl"), Path("data/distill/pool.jsonl")))
+    print(
+        t.train(
+            Path("data/distill/teacher_labels.jsonl"),
+            Path("data/distill/pool.jsonl"),
+            epochs=3,
+            batch_size=16,  # ponytail: halved after MPS footprint hit 25.5G at bs=32
+            alpha_end=0.3,
+        )
+    )

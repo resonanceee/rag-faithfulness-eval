@@ -97,7 +97,13 @@ class OpenRouterJudge:
                     row = json.loads(line)
                     self._vcache[row["key"]] = row["verdict"]
 
-    def _call(self, user_msg: str, retries: int = 10, max_tokens: int | None = None) -> dict:
+    def _call(
+        self,
+        user_msg: str,
+        retries: int = 10,
+        max_tokens: int | None = None,
+        system: str = SYSTEM_PROMPT,
+    ) -> dict:
         body = json.dumps(
             {
                 "model": self.checkpoint,
@@ -105,7 +111,7 @@ class OpenRouterJudge:
                 "max_tokens": max_tokens or self.max_tokens,
                 "reasoning": {"exclude": True},  # hide reasoning; still billed ~100-250 tok
                 "messages": [
-                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "system", "content": system},
                     {"role": "user", "content": user_msg},
                 ],
             }

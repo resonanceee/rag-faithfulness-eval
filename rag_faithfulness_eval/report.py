@@ -1,7 +1,8 @@
-"""Final report: consolidated tables + figures across all experiments.
+"""Figures for the README: consolidated plots across all experiments.
 
-Reads results/exp1|exp2|exp4 summary.csv + cost.json + exp3_analysis.json.
-Writes docs/figures/*.png and docs/final_report.md.
+Reads results/exp1|exp2|exp4 summary.csv + cost.json + exp3_analysis.json,
+writes docs/figures/*.png. (docs/final_report.md was retired: README.md is
+the document of record — this module only refreshes figures.)
 """
 
 import csv
@@ -139,6 +140,28 @@ def fig_exp4_delta(out=FIG / "exp4_query_delta.png"):
     plt.close(fig)
 
 
+def fig_threshold_pareto(out=FIG / "exp_threshold_pareto.png"):
+    """Hybrid escalation curve (Exp4 protocol, full set): quality vs LLM cost share."""
+    rows = _rows(Path("results/threshold_sweep/exp4_sweep.csv"))
+    share = [float(r["llm_share"]) for r in rows]
+    f1 = [float(r["claim_f1_nn"]) for r in rows]
+    t = [float(r["threshold"]) for r in rows]
+    fig, ax = plt.subplots(figsize=(6.5, 4))
+    sc = ax.scatter(share, f1, c=t, cmap="viridis", s=28)
+    ax.plot(share, f1, alpha=0.3)
+    fig.colorbar(sc, label="NLI escalation threshold")
+    for q in (0.85, 0.95, 0.99, 1.0):
+        r = min(rows, key=lambda r: abs(float(r["threshold"]) - q))
+        ax.annotate(f" t={r['threshold']}", (float(r["llm_share"]), float(r["claim_f1_nn"])))
+    ax.set_xlabel("share of claims sent to LLM (≈ cost share)")
+    ax.set_ylabel("claim F1 (neutral_neg)")
+    ax.set_title("Hybrid never dominates pure GLM; 68% cost buys only 84% F1")
+    ax.grid(alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(out, dpi=140)
+    plt.close(fig)
+
+
 def fig_exp3_noise(out=FIG / "exp3_noise.png"):
     a3 = json.load(open("results/exp3_analysis.json"))
     labels, confirmed, flagged = [], [], []
@@ -162,28 +185,6 @@ def fig_exp3_noise(out=FIG / "exp3_noise.png"):
     plt.close(fig)
 
 
-def render_report(out=Path("docs/final_report.md")) -> str:
-    a3 = json.load(open("results/exp3_analysis.json"))
-    lines = [
-        "# Final report\n",
-        "Figures: docs/figures/ (exp1_arms, exp1_calibration, exp2_langs, "
-        "exp4_query_delta, exp3_noise)\n",
-    ]
-    fixes = ", ".join(f"{k} ({v})" for k, v in a3["top3"])
-    lines += [
-        "## Exp 3 highlights\n",
-        f"- Judge-vs-gold conflicts that are gold-side noise: confirmed by both "
-        f"reviewers {a3['noise_all']['both']}/{a3['noise_all']['n']} "
-        f"({a3['noise_all']['both'] / a3['noise_all']['n']:.0%}), flagged by either "
-        f"{a3['noise_all']['any']}/{a3['noise_all']['n']} "
-        f"({a3['noise_all']['any'] / a3['noise_all']['n']:.0%}).",
-        "- Dominant real error type: faithful_but_flagged (judge over-flags).",
-        f"- Top-3 fixes: {fixes}. Cover {a3['heldout']['coverage']:.0%} of held-out cases.",
-    ]
-    out.write_text("\n".join(lines) + "\n")
-    return str(out)
-
-
 if __name__ == "__main__":
     FIG.mkdir(parents=True, exist_ok=True)
     fig_exp1_arms()
@@ -191,4 +192,5 @@ if __name__ == "__main__":
     fig_exp2_langs()
     fig_exp4_delta()
     fig_exp3_noise()
-    print(render_report())
+    if Path("results/threshold_sweep/exp4_sweep.csv").exists():
+        fig_threshold_pareto()

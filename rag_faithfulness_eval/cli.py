@@ -90,6 +90,21 @@ def main(argv: list[str] | None = None) -> int:
     e5.add_argument("--build-sample-only", action="store_true")
     e5.add_argument("--out", type=Path, default=Path("results/exp5"))
 
+    ts = sub.add_parser(
+        "threshold-sweep", help="Exp1/4 hybrid threshold recalibration from caches ($0)"
+    )
+    ts.add_argument("--out", type=Path, default=Path("results/threshold_sweep"))
+
+    na = sub.add_parser(
+        "noise-adjust", help="Task3: noise-corrected metrics from Exp3 flags ($0)"
+    )
+    na.add_argument("--out", type=Path, default=Path("results/noise_adjusted.csv"))
+
+    xq = sub.add_parser(
+        "xquad", help="Task6: organic DE/IT hallucination set via GLM answers (~$0.15)"
+    )
+    xq.add_argument("--n-per-lang", type=int, default=300)
+
     args = p.parse_args(argv)
 
     if args.cmd == "build-data":
@@ -184,6 +199,24 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 0
         run_sweep(models=args.models, repeat=args.repeat, out_dir=args.out)
+        return 0
+
+    if args.cmd == "threshold-sweep":
+        from .threshold_sweep import main as sweep_main
+
+        sweep_main(out_dir=args.out)
+        return 0
+
+    if args.cmd == "noise-adjust":
+        from .noise_adjust import main as adjust_main
+
+        adjust_main(out_path=args.out)
+        return 0
+
+    if args.cmd == "xquad":
+        from .xquad import main as xquad_main
+
+        xquad_main(n_per_lang=args.n_per_lang)
         return 0
 
     if args.cmd == "exp3-sample":

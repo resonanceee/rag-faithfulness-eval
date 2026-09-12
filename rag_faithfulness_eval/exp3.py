@@ -289,7 +289,9 @@ def adjudicate(
                 continue
             r = item["row"]
             print_fn(f"\n=== {i}/{len(queue)} [{item['id']}] ({item['lang']})  q=save+quit")
-            print_fn(f"CONTEXT: {r.get('context', '')[:500]}")
+            # no truncation: judges saw the FULL context (incl. review text);
+            # truncating the display made supported claims look unsupported
+            print_fn(f"CONTEXT: {r.get('context', '')}")
             print_fn(f"CLAIM:   {r.get('claim', '')}")
             print_fn(f"gold: {r.get('gold_label')}  judge: {r.get('judge_verdict')}")
             print_fn(f"R1: gold_ok={item['r1'][0]} type={item['r1'][1]}")

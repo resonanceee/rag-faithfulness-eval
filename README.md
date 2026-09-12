@@ -1,235 +1,233 @@
-# rag-faithfulness-eval
+# ragfaith
 
-What does it cost to check that a RAG answer is faithful to its sources, and
-how good a check can you buy at each price point? This repo benchmarks the real
-options end-to-end — an NLI model, LLM judges (9-model sweep + 2 frontier
-flagships), hybrids, translate-pipelines for DE/IT, and a distilled student —
-on RAGTruth (EN, 18.9k claims) plus synthetic DE/IT (400+400), with two human
-reviewers auditing the judge-vs-gold disagreements.
+*How much does it cost to know whether an AI actually read the documents it
+claims to have read?*
 
-**TL;DR.** `z-ai/glm-5.3-flash` is the best judge we measured — nothing beat
-it, including frontier flagships at 22× the cost. `inclusionai/ling-3.0-flash`
-is the price/perf king (~95–97% of GLM quality at ~23% of billed cost). NLI
-alone is not a detector (recall 0.23), and NLI-confidence hybrid escalation is
-a dead lever — the frontier is dominated by the cheap-LLM path everywhere we
-looked. Final adjudicated audit: 42% of judge-vs-gold conflicts were gold
-annotation noise, so raw metrics *understate* every judge.
+That is the question this project chased for a few weeks in the summer of
+2026. Retrieval-augmented generation is now how most serious AI products
+answer questions: fetch some passages, write a reply grounded in them. But
+"grounded" is doing a lot of work in that sentence. Models wander. They
+paraphrase until the meaning slips, they quietly import facts the documents
+never said, and — less often, but more alarmingly — they invent things
+outright. If you ship one of these systems, you want a machine that watches
+for that. A faithfulness judge.
 
-## Headline results
+So we built the arena to find the best one: 18,900 claims from real RAG
+systems (RAGTruth, English), plus 800 carefully constructed German and
+Italian test cases, plus a separate set of 600 real-world answers where the
+hallucinations weren't planted by us but happened naturally. Then we ran
+everything we could buy against it: a classic NLI model, nine cheap LLM
+judges, hybrids of the two, translation pipelines, a distilled student
+model, and — because people kept asking "but what about the frontier
+models?" — two flagship-class models across the same benchmark. Two humans
+cross-checked the disagreements by hand, twice.
 
-| Judge | Claim F1 (EN, Exp4 protocol) | Noise-adjusted F1 | Cost (full 18.9k set) |
+The short version: **an unglamorous little model,
+[glm-5.3-flash](https://openrouter.ai/z-ai/glm-5.3-flash), beat everything —
+including models costing 22× more per token — and its even smaller cousin,
+ling-3.0-flash, costs a quarter of that while keeping about 97% of the
+quality.** Nothing genuinely beats paying attention to what the cheap,
+purpose-asked judges can do.
+
+## What the arena looks like
+
+Every judge gets the same job, one claim at a time: here is the question,
+here are the passages the system used, here is one atomic claim from the
+answer — is it *faithful*, *unfaithful*, or *unverifiable*? We decompose
+answers into claims (splitting turns out to be load-bearing; a judge that
+skips decomposition drops to a response-level F1 of 0.107), wrap the
+evidence in a labeled `QUESTION: … PASSAGES: …` premise (worth +5.7 points
+of recall for the LLM judges), and score against hand-labeled truth.
+
+Four archetypes went in:
+
+- **A — the NLI judge.** A 279M-parameter DeBERTa that classifies each
+  (passage, claim) pair as entailment, neutral, or contradiction. Free,
+  local, milliseconds per claim.
+- **B — the LLM judge.** Ask a language model directly, strict JSON
+  verdicts only.
+- **C — the hybrid.** Trust the NLI when it's confident, escalate the rest
+  to the LLM. The sensible-sounding middle path.
+- **D — no decomposition.** Judge whole answers in one shot. The control.
+
+## What we found
+
+**The NLI judge is not a detector — it's a false sense of security.** Its
+recall is 0.23: it waves three hallucinations past for every one it catches.
+Worse, it's miscalibrated in the exact regime you'd want to trust (ECE
+0.113 — the 0.8–0.9 confidence bins give you ~85% accuracy, not 90%). It's
+fine as a rough high-precision filter; as a gatekeeper it fails silently.
+
+**The hybrid — the design everyone would sketch on a whiteboard — is a
+trap.** We swept its escalation threshold across the full cache at zero
+cost (`rfe threshold-sweep`) and the curve is honest: to keep 97% of the
+LLM's quality you must send 93% of claims to the LLM anyway. At the default
+0.85 threshold we'd shipped earlier, it loses *half* the LLM's F1. Trusting
+NLI confidence is trusting it exactly where it is most wrong. The sensible-
+sounding middle path is just a discount coupon for lower quality.
+
+![How the arms compare](docs/figures/exp1_arms.png)
+![NLI confidence vs actual accuracy](docs/figures/exp1_calibration.png)
+![The hybrid's real cost/quality curve](docs/figures/exp_threshold_pareto.png)
+
+**The cheap, focused LLM judge wins.** glm-5.3-flash lands claim-level F1
+0.475 (response-level 0.75) against the NLI's 0.143 — and it stays stable
+across reruns (91% verdict agreement run-to-run). Among the nine models we
+swept, nothing specialized-beats-it at any price point; a few lose
+embarrassingly (two well-known flash models landed below 0.25 F1 and are,
+frankly, not usable as judges).
+
+![Nine-model judge sweep](docs/figures/exp5_pareto.png)
+
+**The frontier didn't save anyone's honor either.** Out of genuine
+curiosity we spent $4.27 pitting claude-sonnet-5 and deepseek-v4-pro
+against the same 1,000 claims. The frontier flagship scored *8 points
+below* the flash model at 22× the billed cost. Part of the explanation is
+mundane and useful: half of judging at scale is answering in strict,
+parseable JSON every single time — one contender failed to do that 13% of
+the time and paid a 42% retry tax for it. Compliance is a capability.
+
+**Cross-lingual is its own trap, and translation is the ladder out.** Ask a
+multilingual NLI to judge a German claim against a German passage and its
+hallucination recall is 0.39. Translate the evidence to English first and
+recall nearly doubles to 0.73. Italian is kinder to everyone (near-tie
+either way). German was also where we learned to respect our own pipeline:
+an early bug made entity swaps target "the first capitalized word" — which,
+in German, is every noun — and inflated our scores by a fifth before we
+caught it. Version 2 of the German data is the only one worth quoting.
+
+![Cross-lingual arms](docs/figures/exp2_langs.png)
+![Query-in-context deltas](docs/figures/exp4_query_delta.png)
+
+**The most uncomfortable finding: a chunk of "truth" was wrong.** When
+judges disagreed with the gold labels, we sampled the fights and had two
+humans adjudicate 71 of them case by case. After adjudication, **42% of the
+apparent judge errors were actually gold annotation noise.** Every judge
+looks better than its raw score — the ranking stays identical, but the
+absolute numbers soften. The single most common *judge* mistake is the
+opposite of what you'd fear: over-flagging faithful claims (`precision
+discipline`, not recall). And in a gentle irony, the same exercise found
+that organic, naturally-occurring hallucinations (600 real German/Italian
+answers) are only rarely fabrications — under 1% — while *unverifiable
+drift*, answers quietly wandering off the page, runs 8–10%. The enemy
+isn't lying; it's straying.
+
+![How much of the "ground truth" is noise](docs/figures/exp3_noise.png)
+
+**What we failed at (and what that failure taught).** We tried to distill
+the NLI teacher into a 2.4× smaller, 6.4× faster student, twice. The first
+run's Italian F1 collapsed (0.31 vs teacher 0.66); the retry fixed *that*
+(an Italian-heavy training mix was the real bug, not capacity — student
+came back to 0.54) but the student's real job had been reframed as a
+high-recall pre-filter, and catching 95% of hallucinations requires it to
+escalate 78% of claims anyway. Thin soup. The student stays on its own
+branch as a measured negative result — arguably the most useful kind.
+
+## The numbers, for the record
+
+Headline table (English, Exp4 protocol — the standing one):
+
+| Judge | Claim F1 | Noise-adjusted F1 | Cost, full 18.9k claims |
 |---|---|---|---|
 | glm-5.3-flash | **0.481** | **0.693** | ~$1.92 |
-| ling-3.0-flash | 0.457 (95% of GLM); response F1 0.742 (98%) | — | $0.45 |
-| claude-sonnet-5 (1k frontier check) | 0.702 raw / F1nat 0.403 vs GLM's **0.485** on same ids | — | $2.64 per 1k |
-| NLI (mDeBERTa-xnli-2mil7) | 0.138 | 0.369 | $0 (local) |
-| Distilled MiniLM student | not promotable (2× negative result) | — | $0 (local) |
+| ling-3.0-flash | 0.457 · response F1 0.742 (98% of GLM) | — | $0.45 |
+| NLI (mDeBERTa-xnli-2mil7) | 0.138 | 0.369 | free, local |
+| Distilled MiniLM student | not promotable (2× negative result) | — | free, local |
 
-## Experiments
+Per-arm detail (Exp1, claim-level, `neutral_neg`):
 
-### Exp1 — Judge arms on English RAGTruth (18.9k claims)
+| Arm | Judge | Precision | Recall | F1 | Response F1 |
+|---|---|---|---|---|---|
+| A | multilingual NLI | 0.104 | 0.229 | 0.143 | 0.446 |
+| B | LLM (glm-5.3-flash) | 0.377 | 0.641 | **0.475** | **0.753** |
+| C | hybrid @0.85 | 0.210 | 0.354 | 0.263 | 0.572 |
+| D | no decomposition | — | — | — | 0.107 |
 
-| Arm | Judge | Claim F1 | Response F1 | Note |
-|---|---|---|---|---|
-| A | multilingual NLI | 0.143 | 0.446 | fails on recall (0.23), ECE 0.113 |
-| B | LLM (glm-5.3-flash) | **0.475** | **0.753** | repeatability 91.3% |
-| C | hybrid @0.85 | 0.263 | 0.517 | inherits confident-wrong NLI misses |
-| D | no decomposition | — | 0.69 | decomposition is load-bearing |
-
-![Exp1 arms](docs/figures/exp1_arms.png)
-![NLI calibration](docs/figures/exp1_calibration.png)
-
-### Threshold recalibration — hybrid does not pay ($0, cache sweep)
-
-The hybrid threshold was set by calibration intuition. A full sweep
-(recombined from cached NLI probs + cached GLM verdicts, sanity-checked at
-both endpoints) says the lever is dead:
-
-| Escalation threshold | Share sent to LLM | Claim F1 |
-|---|---|---|
-| 0.50 | 3% | 0.153 |
-| 0.85 (old default) | 32% | 0.263 |
-| 0.95 | 48% | 0.325 |
-| 0.99 | 69% | 0.403 |
-| 1.0 (= pure GLM) | 100% | 0.482 |
-
-![Threshold pareto](docs/figures/exp_threshold_pareto.png)
-
-The NLI is too miscalibrated (ECE 0.113) for its confidence to carry
-information: 69% of GLM's cost buys only 84% of GLM's F1, and 97% of F1
-still costs 93%. hybrid@ling (recomputed after the ling full-set run) shows
-the same shape. **Recommendation: drop the hybrid, buy the cheap judge.**
-
-### Exp2 — Cross-lingual DE/IT (synthetic gold, 400+400, v2 data)
+Cross-lingual (Exp2, claim-level, `neutral_pos`):
 
 | Arm | Judge | DE F1 | IT F1 |
 |---|---|---|---|
 | A | multilingual NLI direct | 0.556 | 0.774 |
-| C | translate → English NLI judge | **0.726** | **0.786** |
+| C | translate → English judge | **0.726** | **0.786** |
 | D | hybrid NLI + LLM arbitration | 0.678 | **0.862** |
 
-![Exp2 langs](docs/figures/exp2_langs.png)
+Frontier check (same 1k claims each, single pass):
 
-Translate-then-English-judge beats direct multilingual on German
-hallucination recall (**0.73 vs 0.39**); IT is near-tied; hybrid wins
-overall. DE is systematically weaker than IT across arms — repeatable, and it
-survived the v2 data fix.
+| Model | Claim F1 | F1 (natural rate) | Recall | Cost per 1k |
+|---|---|---|---|---|
+| glm-5.3-flash | 0.739 | **0.485** | 0.692 | ~$0.12 |
+| ling-3.0-flash | 0.658 | 0.444 | 0.565 | ~$0.04 |
+| claude-sonnet-5 | 0.702 | 0.403 | 0.686 | $2.64 |
+| deepseek-v4-pro | 0.677 | 0.417 | 0.619 | $1.63 |
 
-> **Data-quality note (v2)**: initial DE samples had an anglocentric bug —
-> `entity_swap` targeted "first capitalized token", which in German is any
-> noun, producing mangled claims. v1 (archived in `results/exp2_v1_artifact/`)
-> inflated DE F1 by up to 0.20; rankings unchanged, and the translate-vs-
-> direct gap *widened* after the fix. Do not quote DE numbers older than
-> 2026-09-06.
+Noise-adjusted finals (adjudicated labels, `rfe noise-adjust`):
 
-### Exp4 — Query-in-context (standing protocol)
-
-Adding the labeled question to the premise (`QUESTION: q + PASSAGES: p`)
-flips 10–20% of individual verdicts but leaves aggregates stable; LLM recall
-gains +5.7pts. Non-good rows excluded. **This is the protocol all headline
-numbers use.**
-
-![Exp4 delta](docs/figures/exp4_query_delta.png)
-
-### Exp5 — Judge model sweep (9 models × 2 runs, 4k balanced sample)
-
-![Exp5 pareto](docs/figures/exp5_pareto.png)
-
-| Model | F1nat | Verdict |
-|---|---|---|
-| glm-5.3-flash (baseline) | 0.475* | quality king |
-| **ling-3.0-flash** | **0.463 / 0.469** | **price/perf king** (84.5% agreement w/ GLM) |
-| gemini-2.5-flash | 0.424 | fine, not cheapest |
-| deepseek-v4-flash, seed-1.6-flash | ~0.42 | mid |
-| gpt-4o-mini | 0.372 | underperforms its price |
-| gemini-2.5-flash-lite | 0.312 | cheap-and-weak |
-| glm-4.7-flash, qwen3.7-flash, gpt-4.1-nano | ≤0.25 | losers at any price |
-
-\* GLM row quoted at full-set rate (18.9k claims).
-
-### Frontier check (1k subset, $4.27)
-
-The open question after the sweep – does a true frontier flagship beat a
-purpose-bought cheap judge? – answered on identical claims:
-
-| Model | Claim F1 | F1nat | Recall | Agree w/ GLM | Cost per 1k |
-|---|---|---|---|---|---|
-| glm-5.3-flash | 0.739 | **0.485** | 0.692 | — | ~$0.12 |
-| ling-3.0-flash | 0.658 | 0.444 | 0.565 | — | ~$0.04 |
-| claude-sonnet-5 | 0.702 | 0.403 | 0.686 | 0.845 | $2.64 |
-| deepseek-v4-pro | 0.677 | 0.417 | 0.619 | 0.796 | $1.63 |
-
-**The frontier did not win** — sonnet-5 lost by 8 F1nat points at ~22×
-GLM-flash's billed cost; deepseek-v4-pro lost to ling at ~40× the cost (plus
-135 parse errors / +42% retry overhead; strict-JSON compliance is part of
-the job at scale). Caveats: n=1,000, single pass, CI ≈ ±0.04–0.05 — the
-sonnet-vs-GLM gap is likely real, sonnet-vs-ling is not separable. The
-burden of proof is now on the frontier.
-
-### Exp3 — Human audit + adjudication (two reviewers, 71 conflicts, 40 adjudicated)
-
-- **Final, adjudicated: 30/71 conflicts (42%) are confirmed gold-side
-  noise** (optimistic any-flag upper bound was 66%). Raw metrics understate
-  every judge; the ranking does not change.
-- Inter-rater kappa on gold_ok: EN −0.05, DE 0.47, IT 0.09 — weak, hence
-  adjudication. Adjudicator sided R1 16× / R2 19× / neither 5×.
-- Dispute taxonomy: annotation_noise 16, faithful_but_flagged 12, relation 6,
-  fabrication 5, entity 1. Dominant *judge* error: over-flagging faithful
-  claims (precision-side).
-- Top-3 fixes (threshold / data-noise / decomposition) cover 84% of held-out
-  cases.
-
-![Exp3 noise](docs/figures/exp3_noise.png)
-
-Noise-adjusted final ratings (adjudicated labels, `rfe noise-adjust`):
-
-| Arm | Reported claim F1 | Noise-corrected F1 |
+| Arm | Reported | Corrected |
 |---|---|---|
 | exp4 B (GLM) | 0.475 | **0.693** |
 | exp4 A (NLI) | 0.138 | 0.369 |
-| exp4 C (hybrid@0.85) | 0.263 | 0.493 |
 | exp2 C · DE | 0.726 | 0.931 |
 | exp2 C · IT | 0.786 | 0.831 |
 
-Per-(lang, arm) cells are small (n=1…19): corrected F1 1.0 cells in exp2
-(A/it, D/it) come from 1–2-case cells — read as direction, not decimals. All
-rows (recorded + corrected, label provenance per row) in
-`results/noise_adjusted.csv`.
+## How to read this honestly
 
-### ling-3.0-flash full-set confirmation (18.9k claims, $0.4461)
+- The headline numbers depend on prevalence and mapping choices; both
+  conventions are always computed and reported.
+- The noise correction comes from small annotated cells (n=1…19 per
+  language-arm pair) — treat single-cell F1 1.0s as directional.
+- The DE/IT synthetic set measures exactly what it's asked (planted
+  hallucinations); the organic set measures a different beast, and its
+  current labels are self-judged (human pass descoped).
+- Costs are real OpenRouter bills as of September 2026 (~$19.4 total across
+  everything you see here, including all the reruns and mistakes). The
+  "~7% cheaper" ratio sometimes quoted for ling is a list-price ratio;
+  billed reality on this workload was 23% of GLM — still the best value we
+  measured, just honestly reported.
 
-| Metric | GLM-5.3-flash | ling-3.0-flash | ling as % of GLM |
-|---|---|---|---|
-| Claim F1 (neutral_neg) | 0.4811 | 0.4568 | 94.9% |
-| Response F1 | 0.7603 | 0.7420 | 97.6% |
-| Billed cost | $1.92 | $0.4461 | **23%** |
+## Running it yourself
 
-Honest footnote: "~7% of GLM's cost" is the per-token list-price ratio; the
-*billed* ratio on this workload is 23% (long contexts dominate input
-tokens). The price/perf claim holds at production scale either way.
+Every single number above is reproducible from the checked-in caches for
+$0 — `rfe repro` re-derives the core metrics and asserts zero drift,
+`rfe threshold-sweep` and `rfe noise-adjust` replay the two $0 analyses,
+`rfe exp5` re-runs the full sweep from cache. The one-command journey from
+empty checkout to every figure is in **[docs/reproduce.md](docs/reproduce.md)**.
 
-### Organic DE/IT hallucination distribution (600 answers, $0.46)
+The points worth stealing for your own project:
 
-Complementing synthetic injections: GLM answered 300 real questions per
-language (XQuAD-DE + SQuAD-IT; XQuAD has no Italian split), 1,833 claims,
-provisionally judged (Exp4 protocol): hard fabrication **<1%** of claims;
-unverifiable drift DE 9.7% / IT 7.5% — the load-bearing organic failure is
-answers wandering off-passage, not inventing facts. (The human-adjudication
-pass over the organic claims was descoped; results in `results/exp6/` remain
-self-judged/provisional.)
+1. Decompose answers into claims first; judge atoms, not paragraphs.
+2. Put the question in the premise, labeled. It's nearly free and it's real.
+3. Don't trust a locally-confident cheap model to decide when *not* to call
+   the expensive one unless its calibration is genuinely good — it usually
+   isn't.
+4. Budget for the possibility that a third-plus of your "judge errors" are
+   annotation noise, and adjudicate before concluding.
+5. Cross-lingual: translate to English, then judge in English. On German
+   it's not close.
 
-### Distillation (branch `distillation`) — negative result, twice
-
-Retry fixed the IT collapse (F1 0.310 → 0.538 vs teacher 0.662) with an
-IT-heavy mix (60k EN / 30k DE / 50k IT), 3 epochs, alpha annealed 0.7→0.3 —
-the EN-heavy mix, not student capacity, was the bug. But the reframed goal
-(high-recall pre-filter) fails on its own terms: catching 95% of
-hallucinations requires escalating **78%** of claims, thinner than the ling
-path (23% of cost for 95% of quality). **Not promoted.** Teacher remains
-the default local judge. (`results/distill/impact_retry.json`.)
-
-## Setup & usage
+## Development
 
 ```sh
 pip install -e '.[dev,models]'
-rfe build-data --n-per-lang 200   # synthetic DE/IT set -> data/samples.jsonl
-rfe validate --input data/samples.jsonl
+pytest            # 35 unit tests
+ruff check .
 ```
 
-Default local judge: `MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7`
-(also the distillation teacher). Alternative behind `--judge-checkpoint`.
-The planned 10-language 2mil7 subset checkpoint does not exist on HF; the
-27-language 2mil7 is the only 2mil7 release.
-
-LLM judging goes through OpenRouter; key in `.env`
-(`OPENROUTER_API_KEY`, never committed).
-
-**Full experiment-by-experiment reproduction: [docs/reproduce.md](docs/reproduce.md).**
-Every measured number in this README can be recomputed from the checked-in
-caches for $0 (`rfe repro`, `rfe threshold-sweep`, `rfe noise-adjust`,
-`rfe exp5`).
+API judge calls need `OPENROUTER_API_KEY` in `.env` (never committed; every
+run prints live billed cost and resumes free). Human annotation tooling
+(`rfe exp3-annotate`, `rfe exp3-adjudicate`) is resumable and documented in
+[docs/annotation_instructions.md](docs/annotation_instructions.md). Project
+state, pitfalls, and what we're building next live in
+[HANDOFF.md](HANDOFF.md).
 
 ## Data sources + licenses
 
 | Lang | Source | License |
 |------|--------|---------|
-| EN | [RAGTruth](https://wandb.ai/wandb/ragtruth_processed_4_benchmarks) processed test | research use |
-| DE/IT synthetic | [SNLI](https://huggingface.co/datasets/stanfordnlp/snli) / XNLI / [2mil7](https://huggingface.co/datasets/MoritzLaurer/multilingual-NLI-26lang-2mil7) `it_mnli` | CC BY-SA 4.0 / OANC / CC BY-NC 4.0 |
+| EN | RAGTruth processed (wandb) | research use |
+| DE/IT synthetic | SNLI / XNLI / 2mil7 `it_mnli` | CC BY-SA 4.0 / OANC / CC BY-NC 4.0 |
 | DE organic | google/xquad `xquad.de` | CC BY-SA 4.0 |
-| IT organic | [crux82/squad-it](https://github.com/crux82/squad-it) test | CC BY-SA 4.0 |
+| IT organic | crux82/squad-it test | CC BY-SA 4.0 |
 
-IT caveat: XNLI contains no Italian, and `it_mnli` is MNLI machine-translated
-to IT — the same data family the NLI judge trained on, so IT synthetic
-results carry a contamination caveat.
-
-## Development
-
-```sh
-pip install -e '.[dev]'
-pytest            # unit tests (35)
-ruff check .
-```
-
-Real-model checks (both NLI checkpoints, ~1.1GB download each):
-`pytest -m smoke` (nightly CI + manual dispatch). Human annotation tooling
-(iterative CLI, resumable): `docs/annotation_instructions.md`.
+IT caveat: XNLI has no Italian, and `it_mnli` is machine-translated MNLI —
+the same family the NLI judge trained on, so IT synthetic results carry a
+contamination caveat.
